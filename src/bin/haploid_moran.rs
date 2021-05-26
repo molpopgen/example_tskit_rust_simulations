@@ -106,10 +106,10 @@ fn moran(popsize: i32, nsteps: i32, seed: u64) -> tskit::TableCollection {
                 .unwrap();
             assert!(
                 tables.nodes().time(new_birth).unwrap()
-                    < tables.nodes().time(alive[dead as usize]).unwrap()
+                    < tables.nodes().time(alive[replace as usize]).unwrap()
             );
             tables
-                .add_edge(0., 1., alive[dead as usize], new_birth)
+                .add_edge(0., 1., alive[replace as usize], new_birth)
                 .unwrap();
             alive[dead as usize] = new_birth;
         }
