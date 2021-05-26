@@ -197,8 +197,6 @@ fn run_threaded(options: ProgramOptions, seeds: Vec<u64>) {
     let h = thread::spawn(|| run_in_thread(run_params));
     handles.push(h);
 
-    // If you don't join a thread, it never runs.
-    // Unlike C++, not joining a thread is not a runtime error.
     for h in handles {
         h.join().unwrap();
     }
