@@ -8,6 +8,10 @@ edition = "2018"
 name = "overlapping_generations"
 path = "src/bin/overlapping_generations.rs"
 
+[[bin]]
+name = "haploid_moran"
+path = "src/bin/haploid_moran.rs"
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
