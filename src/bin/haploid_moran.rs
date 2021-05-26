@@ -80,12 +80,6 @@ impl ProgramOptions {
     }
 }
 
-struct RunParams {
-    popsize: i32,
-    nsteps: i32,
-    seeds: Vec<u64>,
-}
-
 fn moran(popsize: i32, nsteps: i32, seed: u64) -> tskit::TableCollection {
     let mut rng = StdRng::seed_from_u64(seed);
 
