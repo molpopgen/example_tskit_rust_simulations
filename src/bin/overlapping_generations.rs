@@ -198,32 +198,54 @@ fn overlapping_generations(params: SimParams, seed: u64) -> tskit::TableCollecti
     tables
 }
 
-fn run(run_params_arc: Arc<RunParams>) {
+fn finalise_tables_and_output(
+    params: SimParams,
+    seed: u64,
+    repid: usize,
+    tables: tskit::TableCollection,
+    outfile_prefix: &str,
+) {
+    let mut tables = tables; // this is a simple move
     use tskit::provenance::Provenance;
-    let run_params = &*run_params_arc.clone();
+    let provenance = format!(
+        "{{\"seed\": {}, \"N\": {}, \"psurvival\": {}, \"nsteps\": {}, \"recrate\": {}}}",
+        seed, params.popsize, params.psurvival, params.nsteps, params.xovers,
+    );
+    tables.add_provenance(&provenance).unwrap();
+    let mut outfile = outfile_prefix.to_string();
+    outfile.push_str(&"_".to_string());
+    outfile.push_str(&repid.to_string());
+    outfile.push_str(&".trees".to_string());
+    tables.build_index().unwrap();
+    tables
+        .dump(&outfile, tskit::TableOutputOptions::empty())
+        .unwrap();
+}
 
-    for (idx, seed) in run_params.seeds.iter().enumerate() {
-        let mut tables = overlapping_generations(run_params.params, *seed);
-        let mut outfile = run_params.prefix.to_string();
-        let provenance = format!(
-            "{{\"seed\": {}, \"N\": {}, \"psurvival\": {}, \"nsteps\": {}, \"recrate\": {}}}",
-            seed,
-            run_params.params.popsize,
-            run_params.params.psurvival,
-            run_params.params.nsteps,
-            run_params.params.xovers,
-        );
-        tables.add_provenance(&provenance).unwrap();
-        outfile.push_str(&"_".to_string());
-        outfile.push_str(&(run_params.first_rep_id + idx).to_string());
-        outfile.push_str(&".trees".to_string());
-        tables.build_index().unwrap();
-        tables
-            .dump(&outfile, tskit::TableOutputOptions::empty())
-            .unwrap();
+fn run_from_seeds(params: SimParams, seeds: &[u64], first_rep_id: usize, outfile_prefix: &str) {
+    for (idx, seed) in seeds.iter().enumerate() {
+        let tables = overlapping_generations(params, *seed);
+        finalise_tables_and_output(params, *seed, first_rep_id + idx, tables, outfile_prefix);
     }
 }
 
+fn run_in_thread(run_params_arc: Arc<RunParams>) {
+    let run_params = &*run_params_arc.clone();
+
+    run_from_seeds(
+        run_params.params,
+        &run_params.seeds,
+        run_params.first_rep_id,
+        &run_params.prefix,
+    );
+}
+
+// This function handles using many threads to run the simulations.
+// rust requires "safe" sharing of data, so no "just sent a pointer
+// and promise" stuff will work here.
+// We use Arc (https://doc.rust-lang.org/std/sync/struct.Arc.html)
+// to manage the data being sent.
+// This function creates the Arc, and run_in_thread (see above) will consume it.
 fn run_threaded(options: ProgramOptions, seeds: Vec<u64>) {
     let mut handles = vec![];
     let reps_per_thread = seeds.len() / options.nthreads as usize;
@@ -236,7 +258,7 @@ fn run_threaded(options: ProgramOptions, seeds: Vec<u64>) {
             first_rep_id: repid,
             prefix: options.treefile.to_string(),
         });
-        let h = thread::spawn(|| run(run_params));
+        let h = thread::spawn(|| run_in_thread(run_params));
         handles.push(h);
         repid += reps_per_thread;
     }
@@ -246,7 +268,7 @@ fn run_threaded(options: ProgramOptions, seeds: Vec<u64>) {
         first_rep_id: repid,
         prefix: options.treefile.to_string(),
     });
-    let h = thread::spawn(|| run(run_params));
+    let h = thread::spawn(|| run_in_thread(run_params));
     handles.push(h);
 
     // If you don't join a thread, it never runs.
@@ -267,23 +289,12 @@ fn main() {
         if options.nthreads > 1 {
             run_threaded(options, seeds);
         } else {
-            let run_params = Arc::new(RunParams {
-                params: options.params.clone(),
-                seeds,
-                first_rep_id: 0,
-                prefix: options.treefile.to_string(),
-            });
-            run(run_params);
+            run_from_seeds(options.params, &seeds, 0, &options.treefile);
         }
     } else {
         // The input seed is the seed for the replicate.
         assert_eq!(options.nreps, 1);
-        let run_params = Arc::new(RunParams {
-            params: options.params.clone(),
-            seeds: vec![options.seed],
-            first_rep_id: 0,
-            prefix: options.treefile.to_string(),
-        });
-        run(run_params);
+        let tables = overlapping_generations(options.params, options.seed);
+        finalise_tables_and_output(options.params, options.seed, 0, tables, &options.treefile);
     }
 }
