@@ -2,10 +2,10 @@ use clap::{value_t, App, Arg};
 use rand::rngs::StdRng;
 use rand::Rng;
 use rand::SeedableRng;
-use std::thread;
 use std::sync::Arc;
+use std::thread;
 use tskit_rust_example_programs::diploid::*;
-use tskit_rust_example_programs::seeding as seeding;
+use tskit_rust_example_programs::seeding;
 
 struct ProgramOptions {
     params: SimParams,
@@ -199,7 +199,25 @@ fn overlapping_generations(params: SimParams, seed: u64) -> tskit::TableCollecti
     tables
 }
 
-fn run(params: SimParams, seed: u64, nreps: i32, prefix: String) {
+fn run(run_params_arc: Arc<RunParams>) {
+    let run_params = &*run_params_arc.clone();
+
+    for (idx, seed) in run_params.seeds.iter().enumerate() {
+        let mut tables = overlapping_generations(run_params.params, *seed);
+        let mut outfile = run_params.prefix.to_string();
+        outfile.push_str(&"_".to_string());
+        outfile.push_str(&run_params.params.psurvival.to_string());
+        outfile.push_str(&"_".to_string());
+        outfile.push_str(&*seed.to_string());
+        outfile.push_str(&".trees".to_string());
+        tables.build_index().unwrap();
+        tables
+            .dump(&outfile, tskit::TableOutputOptions::empty())
+            .unwrap();
+    }
+}
+
+fn run_old(params: SimParams, seed: u64, nreps: i32, prefix: String) {
     let mut rng = StdRng::seed_from_u64(seed);
     let rseed = rand_distr::Uniform::new(0_u64, u64::MAX);
     for _ in 0..nreps {
@@ -226,30 +244,27 @@ fn main() {
     let reps_per_thread = seeds.len() / options.nthreads as usize;
     let mut repid = 0_usize;
 
-    for _ in 0..options.nthreads-1 {
-        if repid + reps_per_thread < seeds.len() {
-            println!("this thread gets seeds {} to {}", repid, repid+reps_per_thread);
-        } 
+    let mut handles = vec![];
+    for _ in 0..options.nthreads - 1 {
+        assert!(repid + reps_per_thread < seeds.len());
+        let run_params = Arc::new(RunParams {
+            params: options.params.clone(),
+            seeds: seeds[repid..repid + reps_per_thread].to_vec(),
+            first_rep_id: repid,
+            prefix: options.treefile.to_string(),
+        });
+        let h = thread::spawn(|| run(run_params));
+        handles.push(h);
         repid += reps_per_thread;
     }
-    println!("last thread gets {} {}", repid, seeds.len());
-
-
-    let mut rng = StdRng::seed_from_u64(options.seed);
-    let rseed = rand_distr::Uniform::new(0_u64, u64::MAX);
-    let mut handles = vec![];
-    for _ in 0..options.nthreads {
-        // rust won't let us borrow values
-        // to pass to threads, so we make local copies
-        // that we then move into the lambda function send to
-        // the spawned thread.
-        let threadseed = rng.sample(rseed);
-        let pclone = options.params.clone();
-        let nr = options.nreps;
-        let fname = options.treefile.to_string();
-        let h = thread::spawn(move || run(pclone, threadseed, nr, fname));
-        handles.push(h);
-    }
+    let run_params = Arc::new(RunParams {
+        params: options.params.clone(),
+        seeds: seeds[repid..seeds.len()].to_vec(),
+        first_rep_id: repid,
+        prefix: options.treefile.to_string(),
+    });
+    let h = thread::spawn(|| run(run_params));
+    handles.push(h);
 
     // If you don't join a thread, it never runs.
     // Unlike C++, not joining a thread is not a runtime error.
