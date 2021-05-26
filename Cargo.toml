@@ -1,5 +1,5 @@
 [package]
-name = "example_tskit_rust_simulations"
+name = "tskit_rust_example_programs"
 version = "0.1.0"
 authors = ["molpopogen <krthornt@uci.edu>"]
 edition = "2018"

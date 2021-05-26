@@ -1,5 +1,5 @@
 use clap::{value_t, App, Arg};
-use example_tskit_rust_simulations::diploid::*;
+use tskit_rust_example_programs::diploid::*;
 use rand::rngs::StdRng;
 use rand::Rng;
 use rand::SeedableRng;
