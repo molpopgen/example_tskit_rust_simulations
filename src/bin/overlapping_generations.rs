@@ -199,11 +199,21 @@ fn overlapping_generations(params: SimParams, seed: u64) -> tskit::TableCollecti
 }
 
 fn run(run_params_arc: Arc<RunParams>) {
+    use tskit::provenance::Provenance;
     let run_params = &*run_params_arc.clone();
 
     for (idx, seed) in run_params.seeds.iter().enumerate() {
         let mut tables = overlapping_generations(run_params.params, *seed);
         let mut outfile = run_params.prefix.to_string();
+        let provenance = format!(
+            "{{\"seed\": {}, \"N\": {}, \"psurvival\": {}, \"nsteps\": {}, \"recrate\": {}}}",
+            seed,
+            run_params.params.popsize,
+            run_params.params.psurvival,
+            run_params.params.nsteps,
+            run_params.params.xovers,
+        );
+        tables.add_provenance(&provenance).unwrap();
         outfile.push_str(&"_".to_string());
         outfile.push_str(&(run_params.first_rep_id + idx).to_string());
         outfile.push_str(&".trees".to_string());
