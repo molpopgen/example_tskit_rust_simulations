@@ -12,6 +12,6 @@ path = "src/bin/overlapping_generations.rs"
 
 [dependencies]
 clap = "~2.33.3"
-tskit = "=0.3.0"
+tskit = { version = "=0.3.0", features = ["provenance"] }
 rand = "0.8.3"
 rand_distr = "0.4.0"
