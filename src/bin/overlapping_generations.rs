@@ -1,9 +1,11 @@
 use clap::{value_t, App, Arg};
-use tskit_rust_example_programs::diploid::*;
 use rand::rngs::StdRng;
 use rand::Rng;
 use rand::SeedableRng;
 use std::thread;
+use std::sync::Arc;
+use tskit_rust_example_programs::diploid::*;
+use tskit_rust_example_programs::seeding as seeding;
 
 struct ProgramOptions {
     params: SimParams,
@@ -23,6 +25,13 @@ impl Default for ProgramOptions {
             nreps: 1,
         }
     }
+}
+
+struct RunParams {
+    params: SimParams,
+    seeds: Vec<u64>,
+    first_rep_id: usize,
+    prefix: String,
 }
 
 #[derive(Debug, Clone)]
@@ -211,6 +220,20 @@ fn run(params: SimParams, seed: u64, nreps: i32, prefix: String) {
 
 fn main() {
     let options = ProgramOptions::new();
+
+    let seeds = seeding::make_unique_seeds(options.seed, options.nreps);
+
+    let reps_per_thread = seeds.len() / options.nthreads as usize;
+    let mut repid = 0_usize;
+
+    for _ in 0..options.nthreads-1 {
+        if repid + reps_per_thread < seeds.len() {
+            println!("this thread gets seeds {} to {}", repid, repid+reps_per_thread);
+        } 
+        repid += reps_per_thread;
+    }
+    println!("last thread gets {} {}", repid, seeds.len());
+
 
     let mut rng = StdRng::seed_from_u64(options.seed);
     let rseed = rand_distr::Uniform::new(0_u64, u64::MAX);
