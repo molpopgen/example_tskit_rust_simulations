@@ -259,14 +259,28 @@ fn run_threaded(options: ProgramOptions, seeds: Vec<u64>) {
 fn main() {
     let options = ProgramOptions::new();
 
-    let seeds = seeding::make_unique_seeds(options.seed, options.nreps);
+    if options.nreps > 1 {
+        // Then the input seed is an initial seed used to generate
+        // unique seeds for each replicate
+        let seeds = seeding::make_unique_seeds(options.seed, options.nreps);
 
-    if options.nthreads > 1 {
-        run_threaded(options, seeds);
+        if options.nthreads > 1 {
+            run_threaded(options, seeds);
+        } else {
+            let run_params = Arc::new(RunParams {
+                params: options.params.clone(),
+                seeds,
+                first_rep_id: 0,
+                prefix: options.treefile.to_string(),
+            });
+            run(run_params);
+        }
     } else {
+        // The input seed is the seed for the replicate.
+        assert_eq!(options.nreps, 1);
         let run_params = Arc::new(RunParams {
             params: options.params.clone(),
-            seeds,
+            seeds: vec![options.seed],
             first_rep_id: 0,
             prefix: options.treefile.to_string(),
         });
