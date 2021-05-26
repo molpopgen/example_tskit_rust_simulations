@@ -230,7 +230,7 @@ fn run_from_seeds(params: SimParams, seeds: &[u64], first_rep_id: usize, outfile
 }
 
 fn run_in_thread(run_params_arc: Arc<RunParams>) {
-    let run_params = &*run_params_arc.clone();
+    let run_params = &*run_params_arc;
 
     run_from_seeds(
         run_params.params,
@@ -253,7 +253,7 @@ fn run_threaded(options: ProgramOptions, seeds: Vec<u64>) {
     for _ in 0..options.nthreads - 1 {
         assert!(repid + reps_per_thread < seeds.len());
         let run_params = Arc::new(RunParams {
-            params: options.params.clone(),
+            params: options.params,
             seeds: seeds[repid..repid + reps_per_thread].to_vec(),
             first_rep_id: repid,
             prefix: options.treefile.to_string(),
@@ -263,10 +263,10 @@ fn run_threaded(options: ProgramOptions, seeds: Vec<u64>) {
         repid += reps_per_thread;
     }
     let run_params = Arc::new(RunParams {
-        params: options.params.clone(),
+        params: options.params,
         seeds: seeds[repid..seeds.len()].to_vec(),
         first_rep_id: repid,
-        prefix: options.treefile.to_string(),
+        prefix: options.treefile,
     });
     let h = thread::spawn(|| run_in_thread(run_params));
     handles.push(h);
