@@ -149,7 +149,7 @@ fn finalise_tables_and_output(
         seed, options.popsize, options.nsteps,
     );
     tables.add_provenance(&provenance).unwrap();
-    let mut outfile = options.treefile.to_string();
+    let mut outfile = options.treefile;
     outfile.push_str(&"_".to_string());
     outfile.push_str(&repid.to_string());
     outfile.push_str(&".trees".to_string());
