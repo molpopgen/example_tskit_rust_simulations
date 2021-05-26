@@ -224,41 +224,45 @@ fn run(run_params_arc: Arc<RunParams>) {
     }
 }
 
+fn run_threaded(options: ProgramOptions, seeds: Vec<u64>) {
+    let mut handles = vec![];
+    let reps_per_thread = seeds.len() / options.nthreads as usize;
+    let mut repid = 0_usize;
+    for _ in 0..options.nthreads - 1 {
+        assert!(repid + reps_per_thread < seeds.len());
+        let run_params = Arc::new(RunParams {
+            params: options.params.clone(),
+            seeds: seeds[repid..repid + reps_per_thread].to_vec(),
+            first_rep_id: repid,
+            prefix: options.treefile.to_string(),
+        });
+        let h = thread::spawn(|| run(run_params));
+        handles.push(h);
+        repid += reps_per_thread;
+    }
+    let run_params = Arc::new(RunParams {
+        params: options.params.clone(),
+        seeds: seeds[repid..seeds.len()].to_vec(),
+        first_rep_id: repid,
+        prefix: options.treefile.to_string(),
+    });
+    let h = thread::spawn(|| run(run_params));
+    handles.push(h);
+
+    // If you don't join a thread, it never runs.
+    // Unlike C++, not joining a thread is not a runtime error.
+    for h in handles {
+        h.join().unwrap();
+    }
+}
+
 fn main() {
     let options = ProgramOptions::new();
 
     let seeds = seeding::make_unique_seeds(options.seed, options.nreps);
 
     if options.nthreads > 1 {
-        let mut handles = vec![];
-        let reps_per_thread = seeds.len() / options.nthreads as usize;
-        let mut repid = 0_usize;
-        for _ in 0..options.nthreads - 1 {
-            assert!(repid + reps_per_thread < seeds.len());
-            let run_params = Arc::new(RunParams {
-                params: options.params.clone(),
-                seeds: seeds[repid..repid + reps_per_thread].to_vec(),
-                first_rep_id: repid,
-                prefix: options.treefile.to_string(),
-            });
-            let h = thread::spawn(|| run(run_params));
-            handles.push(h);
-            repid += reps_per_thread;
-        }
-        let run_params = Arc::new(RunParams {
-            params: options.params.clone(),
-            seeds: seeds[repid..seeds.len()].to_vec(),
-            first_rep_id: repid,
-            prefix: options.treefile.to_string(),
-        });
-        let h = thread::spawn(|| run(run_params));
-        handles.push(h);
-
-        // If you don't join a thread, it never runs.
-        // Unlike C++, not joining a thread is not a runtime error.
-        for h in handles {
-            h.join().unwrap();
-        }
+        run_threaded(options, seeds);
     } else {
         let run_params = Arc::new(RunParams {
             params: options.params.clone(),
