@@ -1,20 +1,26 @@
 use clap::{value_t, App, Arg};
 use example_tskit_rust_simulations::diploid::*;
 use rand::rngs::StdRng;
+use rand::Rng;
 use rand::SeedableRng;
+use std::thread;
 
 struct ProgramOptions {
     params: SimParams,
     treefile: String,
     seed: u64,
+    nthreads: i32,
+    nreps: i32,
 }
 
 impl Default for ProgramOptions {
     fn default() -> Self {
         Self {
             params: SimParams::default(),
-            treefile: String::from("treefile.trees"),
+            treefile: String::from("treefile"),
             seed: 0,
+            nthreads: 1,
+            nreps: 1,
         }
     }
 }
@@ -74,7 +80,7 @@ impl ProgramOptions {
                 Arg::with_name("treefile")
                     .short("t")
                     .long("treefile")
-                    .help("Name of output file. The format is a tskit \"trees\" file. Default = \"treefile.trees\".")
+                    .help("Pref of output file. The format is a tskit \"trees\" file. Default = \"treefile\".")
                     .takes_value(true),
             )
             .arg(
@@ -91,6 +97,8 @@ impl ProgramOptions {
                     .help("Survival probability. A value of 0.0 is the Wright-Fisher model of non-overlapping generations.  Values must b 0.0 <= p < 1.0.  Default = 0.0.")
                     .takes_value(true),
             )
+            .arg(Arg::with_name("nthreads").short("T").long("nthreads").help("Number of threads to use. Default = 1").takes_value(true))
+            .arg(Arg::with_name("nreps").short("r").long("nreps").help("Number replicates to run. Default = 1").takes_value(true))
             .get_matches();
 
         options.params.popsize =
@@ -109,6 +117,8 @@ impl ProgramOptions {
         options.seed = value_t!(matches.value_of("seed"), u64).unwrap_or(options.seed);
         options.treefile =
             value_t!(matches.value_of("treefile"), String).unwrap_or(options.treefile);
+        options.nthreads = value_t!(matches.value_of("nthreads"), i32).unwrap_or(options.nthreads);
+        options.nreps = value_t!(matches.value_of("nreps"), i32).unwrap_or(options.nreps);
 
         options.validate().unwrap();
         options
@@ -180,12 +190,47 @@ fn overlapping_generations(params: SimParams, seed: u64) -> tskit::TableCollecti
     tables
 }
 
+fn run(params: SimParams, seed: u64, nreps: i32, prefix: String) {
+    let mut rng = StdRng::seed_from_u64(seed);
+    let rseed = rand_distr::Uniform::new(0_u64, u64::MAX);
+    for _ in 0..nreps {
+        let repseed = rng.sample(rseed);
+        let mut tables = overlapping_generations(params, repseed);
+        let mut outfile = prefix.to_string();
+        outfile.push_str(&"_".to_string());
+        outfile.push_str(&params.psurvival.to_string());
+        outfile.push_str(&"_".to_string());
+        outfile.push_str(&repseed.to_string());
+        outfile.push_str(&".trees".to_string());
+        tables.build_index().unwrap();
+        tables
+            .dump(&outfile, tskit::TableOutputOptions::empty())
+            .unwrap();
+    }
+}
+
 fn main() {
     let options = ProgramOptions::new();
 
-    let tables = overlapping_generations(options.params, options.seed);
+    let mut rng = StdRng::seed_from_u64(options.seed);
+    let rseed = rand_distr::Uniform::new(0_u64, u64::MAX);
+    let mut handles = vec![];
+    for _ in 0..options.nthreads {
+        // rust won't let us borrow values
+        // to pass to threads, so we make local copies
+        // that we then move into the lambda function send to
+        // the spawned thread.
+        let threadseed = rng.sample(rseed);
+        let pclone = options.params.clone();
+        let nr = options.nreps;
+        let fname = options.treefile.to_string();
+        let h = thread::spawn(move || run(pclone, threadseed, nr, fname));
+        handles.push(h);
+    }
 
-    tables
-        .dump(&options.treefile, tskit::TableOutputOptions::empty())
-        .unwrap();
+    // If you don't join a thread, it never runs.
+    // Unlike C++, not joining a thread is not a runtime error.
+    for h in handles {
+        h.join().unwrap();
+    }
 }
