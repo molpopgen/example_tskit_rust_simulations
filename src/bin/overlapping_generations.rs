@@ -1,6 +1,5 @@
 use clap::{value_t, App, Arg};
 use rand::rngs::StdRng;
-use rand::Rng;
 use rand::SeedableRng;
 use std::sync::Arc;
 use std::thread;
@@ -206,28 +205,7 @@ fn run(run_params_arc: Arc<RunParams>) {
         let mut tables = overlapping_generations(run_params.params, *seed);
         let mut outfile = run_params.prefix.to_string();
         outfile.push_str(&"_".to_string());
-        outfile.push_str(&run_params.params.psurvival.to_string());
-        outfile.push_str(&"_".to_string());
-        outfile.push_str(&*seed.to_string());
-        outfile.push_str(&".trees".to_string());
-        tables.build_index().unwrap();
-        tables
-            .dump(&outfile, tskit::TableOutputOptions::empty())
-            .unwrap();
-    }
-}
-
-fn run_old(params: SimParams, seed: u64, nreps: i32, prefix: String) {
-    let mut rng = StdRng::seed_from_u64(seed);
-    let rseed = rand_distr::Uniform::new(0_u64, u64::MAX);
-    for _ in 0..nreps {
-        let repseed = rng.sample(rseed);
-        let mut tables = overlapping_generations(params, repseed);
-        let mut outfile = prefix.to_string();
-        outfile.push_str(&"_".to_string());
-        outfile.push_str(&params.psurvival.to_string());
-        outfile.push_str(&"_".to_string());
-        outfile.push_str(&repseed.to_string());
+        outfile.push_str(&(run_params.first_rep_id + idx).to_string());
         outfile.push_str(&".trees".to_string());
         tables.build_index().unwrap();
         tables
