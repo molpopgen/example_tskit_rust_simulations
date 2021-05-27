@@ -179,7 +179,6 @@ fn overlapping_generations(params: SimParams, seed: u64) -> tskit::TableCollecti
 
     let mut alive = vec![];
 
-
     for _ in 0..params.popsize {
         let node0 = match tables.add_node(0, params.nsteps as f64, tskit::TSK_NULL, tskit::TSK_NULL)
         {
@@ -196,22 +195,84 @@ fn overlapping_generations(params: SimParams, seed: u64) -> tskit::TableCollecti
     }
 
     let mut replacements = vec![];
-    let picker = Uniform::new(0, params.popsize);
+
+    // Used to pick the parents for a Replacement
+    let picker = Uniform::new(0, params.popsize as usize);
 
     for step in (0..params.nsteps).rev() {
-
         replacements.clear();
-        for i in 0..params.popsize as usize{
-            let x = rng.gen();
+
+        // Generate deaths, record replacement nodes
+        for index in 0..params.popsize as usize {
+            let x: f64 = rng.gen();
             match x.partial_cmp(&params.psurvival) {
+                Some(std::cmp::Ordering::Greater) => {
+                    // Generate two offspring nodes
+                    let node1 = tables
+                        .add_node(0, step as f64, tskit::TSK_NULL, tskit::TSK_NULL)
+                        .unwrap();
+                    let node2 = tables
+                        .add_node(0, step as f64, tskit::TSK_NULL, tskit::TSK_NULL)
+                        .unwrap();
+                    // Record that individual i will be replaced
+                    // by the two new nodes
+                    replacements.push(Replacement {
+                        index,
+                        node1,
+                        node2,
+                    });
+                }
+                Some(_) => (),
+                None => panic!("bad floating point comparison"),
             }
         }
 
-        death_and_parents(&alive, &params, &mut parents, &mut rng);
-        births(&parents, &params, step, &mut tables, &mut alive, &mut rng);
+        // For each replacement, pick parents and add edges
+        for rep in &replacements {
+            for offspring_node_ in &[rep.node1, rep.node2] {
+                let parent_index = rng.sample(picker);
+                let mut node1 = alive[2 * parent_index];
+                let mut node2 = alive[2 * parent_index + 1];
+
+                // FIXME: use crossover code in lib
+                // Pick which gamete to pass on
+                let x: f64 = rng.gen();
+                match x.partial_cmp(&0.5) {
+                    Some(std::cmp::Ordering::Less) => {
+                        std::mem::swap(&mut node1, &mut node2);
+                    }
+                    Some(_) => (),
+                    None => panic!("Unexpected None"),
+                }
+                // record the edge
+                tables
+                    .add_edge(0., tables.sequence_length(), node1, *offspring_node_)
+                    .unwrap();
+            }
+        }
+
+        // Finally, replace the parent nodes with the new births
+        for rep in &replacements {
+            alive[2 * rep.index] = rep.node1;
+            alive[2 * rep.index + 1] = rep.node1;
+        }
 
         if step % params.simplification_interval == 0 {
-            simplify(&mut alive, &mut tables);
+            match tables.full_sort(tskit::TableSortOptions::default()) {
+                Ok(_) => (),
+                Err(e) => panic!("{}", e),
+            }
+            match tables.simplify(&alive, tskit::SimplificationOptions::empty(), true) {
+                Ok(x) => match x {
+                    Some(idmap) => {
+                        for a in alive.iter_mut() {
+                            *a = idmap[*a as usize];
+                        }
+                    }
+                    None => panic!("expected an id map!"),
+                },
+                Err(e) => panic!("{}", e),
+            }
         }
     }
 
