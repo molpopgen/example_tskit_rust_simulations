@@ -1,6 +1,8 @@
 use clap::{value_t, App, Arg};
 use rand::rngs::StdRng;
+use rand::Rng;
 use rand::SeedableRng;
+use rand_distr::Uniform;
 use std::sync::Arc;
 use std::thread;
 use tskit_rust_example_programs::diploid::*;
@@ -31,6 +33,15 @@ struct RunParams {
     seeds: Vec<u64>,
     first_rep_id: usize,
     prefix: String,
+}
+
+// Replace nodes at positions
+// 2i and 2i + 1 with node1 and node2,
+// respectively
+struct Replacement {
+    index: usize,
+    node1: tskit::tsk_id_t,
+    node2: tskit::tsk_id_t,
 }
 
 #[derive(Debug, Clone)]
@@ -166,7 +177,9 @@ fn overlapping_generations(params: SimParams, seed: u64) -> tskit::TableCollecti
 
     let mut rng = StdRng::seed_from_u64(seed);
 
-    let mut alive: Vec<Diploid> = vec![];
+    let mut alive = vec![];
+
+
     for _ in 0..params.popsize {
         let node0 = match tables.add_node(0, params.nsteps as f64, tskit::TSK_NULL, tskit::TSK_NULL)
         {
@@ -178,13 +191,22 @@ fn overlapping_generations(params: SimParams, seed: u64) -> tskit::TableCollecti
             Ok(x) => x,
             Err(e) => panic!("{}", e),
         };
-        alive.push(Diploid { node0, node1 });
+        alive.push(node0);
+        alive.push(node1);
     }
 
-    let mut parents: Vec<Parents> = vec![];
+    let mut replacements = vec![];
+    let picker = Uniform::new(0, params.popsize);
 
     for step in (0..params.nsteps).rev() {
-        parents.clear();
+
+        replacements.clear();
+        for i in 0..params.popsize as usize{
+            let x = rng.gen();
+            match x.partial_cmp(&params.psurvival) {
+            }
+        }
+
         death_and_parents(&alive, &params, &mut parents, &mut rng);
         births(&parents, &params, step, &mut tables, &mut alive, &mut rng);
 
