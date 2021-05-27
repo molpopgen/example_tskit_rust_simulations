@@ -254,7 +254,7 @@ fn overlapping_generations(params: SimParams, seed: u64) -> tskit::TableCollecti
         // Finally, replace the parent nodes with the new births
         for rep in &replacements {
             alive[2 * rep.index] = rep.node1;
-            alive[2 * rep.index + 1] = rep.node1;
+            alive[2 * rep.index + 1] = rep.node2;
         }
 
         if step % params.simplification_interval == 0 {
