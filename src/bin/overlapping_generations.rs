@@ -205,6 +205,9 @@ fn overlapping_generations(params: SimParams, seed: u64) -> tskit::TableCollecti
         // Generate deaths, record replacement nodes
         for index in 0..params.popsize as usize {
             let x: f64 = rng.gen();
+            debug_assert!(x.is_finite());
+            assert!(x < 1.0);
+            assert!(!(x < 0.0));
             match x.partial_cmp(&params.psurvival) {
                 Some(std::cmp::Ordering::Greater) => {
                     // Generate two offspring nodes
