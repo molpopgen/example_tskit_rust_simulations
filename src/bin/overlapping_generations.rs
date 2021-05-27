@@ -2,7 +2,7 @@ use clap::{value_t, App, Arg};
 use rand::rngs::StdRng;
 use rand::Rng;
 use rand::SeedableRng;
-use rand_distr::Uniform;
+use rand_distr::{Exp, Uniform};
 use std::sync::Arc;
 use std::thread;
 use tskit_rust_example_programs::diploid::*;
@@ -169,6 +169,75 @@ impl ProgramOptions {
     }
 }
 
+fn poisson_crossover(
+    parental_nodes: (tskit::tsk_id_t, tskit::tsk_id_t),
+    offspring_node: tskit::tsk_id_t,
+    recrate: f64,
+    rng: &mut StdRng,
+    tables: &mut tskit::TableCollection,
+) {
+    if recrate < 0.0 {
+        panic!("invalid recombination rate: {}", recrate);
+    }
+    let mut pnode0 = parental_nodes.0;
+    let mut pnode1 = parental_nodes.1;
+
+    let x: f64 = rng.gen();
+    if x < 0.5 {
+        std::mem::swap(&mut pnode0, &mut pnode1);
+    }
+
+    if recrate > 0.0 {
+        let exp = match Exp::new(recrate / tables.sequence_length()) {
+            Ok(e) => e,
+            Err(e) => panic!("{}", e),
+        };
+        let mut current_pos = 0.0;
+        loop {
+            let next_length = rng.sample(exp);
+            match (current_pos + next_length).partial_cmp(&tables.sequence_length()) {
+                Some(std::cmp::Ordering::Less) => {
+                    match tables.add_edge(
+                        current_pos,
+                        current_pos + next_length,
+                        pnode0,
+                        offspring_node,
+                    ) {
+                        Ok(_) => (),
+                        Err(e) => panic!("{}", e),
+                    }
+                    std::mem::swap(&mut pnode0, &mut pnode1);
+                    current_pos += next_length;
+                }
+                Some(_) => {
+                    match tables.add_edge(
+                        current_pos,
+                        tables.sequence_length(),
+                        pnode0,
+                        offspring_node,
+                    ) {
+                        Ok(_) => (),
+                        Err(e) => panic!("{}", e),
+                    }
+                    current_pos = tables.sequence_length();
+                    break;
+                }
+                None => panic!("Unexpected None"),
+            }
+        }
+        assert!(match current_pos.partial_cmp(&tables.sequence_length()) {
+            Some(std::cmp::Ordering::Less) => false,
+            Some(_) => true,
+            None => panic!("unexpected None"),
+        });
+    } else {
+        match tables.add_edge(0., tables.sequence_length(), pnode0, offspring_node) {
+            Ok(_) => (),
+            Err(e) => panic!("{}", e),
+        }
+    }
+}
+
 fn overlapping_generations(params: SimParams, seed: u64) -> tskit::TableCollection {
     let mut tables = match tskit::TableCollection::new(params.genome_length) {
         Ok(x) => x,
@@ -207,7 +276,11 @@ fn overlapping_generations(params: SimParams, seed: u64) -> tskit::TableCollecti
             let x: f64 = rng.gen();
             debug_assert!(x.is_finite());
             assert!(x < 1.0);
-            assert!(!(x < 0.0));
+            assert!(match x.partial_cmp(&0.0) {
+                Some(std::cmp::Ordering::Less) => false,
+                Some(_) => true,
+                None => panic!("unexpected None"),
+            });
             match x.partial_cmp(&params.psurvival) {
                 Some(std::cmp::Ordering::Greater) => {
                     // Generate two offspring nodes
@@ -232,25 +305,33 @@ fn overlapping_generations(params: SimParams, seed: u64) -> tskit::TableCollecti
 
         // For each replacement, pick parents and add edges
         for rep in &replacements {
-            for offspring_node_ in &[rep.node1, rep.node2] {
+            for offspring_node in &[rep.node1, rep.node2] {
                 let parent_index = rng.sample(picker);
-                let mut node1 = alive[2 * parent_index];
-                let mut node2 = alive[2 * parent_index + 1];
+                let node1 = alive[2 * parent_index];
+                let node2 = alive[2 * parent_index + 1];
+
+                poisson_crossover(
+                    (node1, node2),
+                    *offspring_node,
+                    params.xovers,
+                    &mut rng,
+                    &mut tables,
+                );
 
                 // FIXME: use crossover code in lib
                 // Pick which gamete to pass on
-                let x: f64 = rng.gen();
-                match x.partial_cmp(&0.5) {
-                    Some(std::cmp::Ordering::Less) => {
-                        std::mem::swap(&mut node1, &mut node2);
-                    }
-                    Some(_) => (),
-                    None => panic!("Unexpected None"),
-                }
-                // record the edge
-                tables
-                    .add_edge(0., tables.sequence_length(), node1, *offspring_node_)
-                    .unwrap();
+                //let x: f64 = rng.gen();
+                //match x.partial_cmp(&0.5) {
+                //    Some(std::cmp::Ordering::Less) => {
+                //        std::mem::swap(&mut node1, &mut node2);
+                //    }
+                //    Some(_) => (),
+                //    None => panic!("Unexpected None"),
+                //}
+                //// record the edge
+                //tables
+                //    .add_edge(0., tables.sequence_length(), node1, *offspring_node_)
+                //    .unwrap();
             }
         }
 
